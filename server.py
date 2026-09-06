@@ -140,7 +140,7 @@ def test_supabase():
 
 
 # ============================================================
-# LOGIN
+# LOGIN - FIXED (Supports both hashed AND plain text PINs)
 # ============================================================
 
 @app.route("/api/login", methods=["POST"])
@@ -165,24 +165,29 @@ def login():
         employees = response.data or []
         emp = employees[0] if employees else None
 
-        if (
-            emp
-            and emp.get("pin")
-            and check_password_hash(emp["pin"], password)
-        ):
-            role = (
-                "Master"
-                if (emp.get("position") or "").strip().lower() == "master"
-                else "Team Member"
+        if emp and emp.get("pin"):
+            stored_pin = emp["pin"]
+            
+            # ✅ FIX: Try BOTH hash check AND plain text comparison
+            pin_matches = (
+                check_password_hash(stored_pin, password) or  # Hashed PIN
+                str(stored_pin) == str(password)              # Plain text PIN
             )
+            
+            if pin_matches:
+                role = (
+                    "Master"
+                    if (emp.get("position") or "").strip().lower() == "master"
+                    else "Team Member"
+                )
 
-            return jsonify({
-                "status": "success",
-                "user": {
-                    "name": emp["name"],
-                    "role": role
-                }
-            })
+                return jsonify({
+                    "status": "success",
+                    "user": {
+                        "name": emp["name"],
+                        "role": role
+                    }
+                })
 
         return jsonify({
             "status": "error",
@@ -199,7 +204,7 @@ def login():
 
 
 # ============================================================
-# SECURE PIN VERIFICATION (FIX 3)
+# SECURE PIN VERIFICATION - FIXED
 # ============================================================
 
 @app.route("/api/verify-pin", methods=["POST"])
@@ -217,9 +222,12 @@ def verify_pin():
 
         for emp in response.data or []:
             if (emp.get("position") or "").strip().lower() == "master":
-                if check_password_hash(emp.get("pin") or "", pin):
+                stored_pin = emp.get("pin") or ""
+                # ✅ FIX: Try BOTH hash check AND plain text comparison
+                if check_password_hash(stored_pin, pin) or stored_pin == pin:
                     return jsonify({"valid": True})
 
+        # Keep the hardcoded 4321 for backward compatibility
         if pin == "4321":
             return jsonify({"valid": True})
 
